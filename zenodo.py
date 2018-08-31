@@ -23,20 +23,13 @@ import ckanapi
 import tempfile
 import json
 import re
-
+import logging
 from pprint import pprint
 
-
-# apitoken = os.environ['ZENODO_APITOKEN']
-# r = requests.get("https://zenodo.org/api/deposit/depositions",
-#                  params={'access_token': apitoken})
-# print(r.status_code)
-
-    
 DEFAULT_AFFILIATION = 'Eawag'
 DEFAULT_TYPE = 'dataset'
 ZENODO_HOST = 'https://zenodo.org'
-ZENODO_HOST_TEST = 'http://sandbox.zenodo.org'
+ZENODO_HOST_TEST = 'https://sandbox.zenodo.org'
 
 class Zen:
     def __init__(self, args):
@@ -49,6 +42,7 @@ class Zen:
         self.ckanpkg = self.get_ckanpkg(sourceurl.path.split('/')[-1])
         self.resourceurls = self.get_resourceurls(self.ckanpkg)
         self.zmeta = self.zenodo_meta()
+        self.resources = self.get_ckanresources(self.resourceurls)
         if args.get('--sandbox'):
             self.apitoken_zenodo = self.getapitokens().get('zenodo_test')
             self.host_zenodo = ZENODO_HOST_TEST
@@ -56,9 +50,20 @@ class Zen:
             self.apitoken_zenodo = self.getapitokens().get('zenodo')
             self.host_zenodo = ZENODO_HOST
 
-            
-    def putfile(self):
-        pass
+    def putfiles(self, resourcefiles=None, zid=None):
+        resourcefiles = resourcefiles or self.resourcefiles
+        zid = zid or self.zid
+        url = '{}/api/deposit/depositions/{}/files'.format(self.host_zenodo, zid)
+        params = {'access_token': self.apitoken_zenodo}
+        for fn, _, fpath in resourcefiles:
+            print("Uploading {}, Path: {}".format(fn, fpath))
+            with  open(fpath, 'rb') as f:
+                r = requests.post(url,
+                                  files={'file': (fn, f)},
+                                  params=params)            
+            print('\n{}'.format(r.text))
+        
+        
     def putmeta(self):
         url = '{}/api/deposit/depositions'.format(self.host_zenodo)
         print(url)
@@ -67,7 +72,20 @@ class Zen:
         params = {'access_token': self.apitoken_zenodo}
         print(params)
         print(self.zmeta)
-        r = requests.post(url, headers=headers, params=params, data=self.zmeta)
+        r = requests.post(url,
+                          headers=headers,
+                          params=params,
+                          json={'metadata': self.zmeta})
+        if r.status_code != 201:
+            print(r.text)
+            raise(RuntimeError('Failed to create metadata record'))
+        else:
+            self.zid = r.json()['id']
+            return r
+
+    def list_depositions(self):
+        url = '{}/api/deposit/depositions'.format(self.host_zenodo)
+        r = requests.get(url, params={'access_token': self.apitoken_zenodo})
         return r
         
     def getapitokens(self):
@@ -94,8 +112,8 @@ class Zen:
                 with requests.get(u, stream=True) as r:
                     for chunk in r.iter_content(4096):
                         f.write(chunk)
+        self.resourcefiles = resources
         return resources
-            
     
     def listself(self):
         print("SELF\n")
@@ -143,30 +161,13 @@ class Zen:
             'description': self.ckanpkg.get('notes'),
             'keywords': [t.get('display_name') for t in self.ckanpkg.get('tags')]
             })
-        return json.dumps(meta)
+        return meta
+
+    
         
 if __name__ == '__main__':
     args = docopt(__doc__, argv=sys.argv[1:])
     z = Zen(args)
-    z.listself()
-   
-    #resources = z.get_ckanresources(z.resourceurls)
-    #print(resources)
-    print("AUTHORS\n")
-
-    print(z.authors2zenodo())
-    print("META\n")
-    print(z.zenodo_meta())
     r = z.putmeta()
-    print("RETURN META\n")
-    print(r.__dict__)
-          
-
-args = {'<doi>': '10.25678/000055',
-        '--sandbox': False,
-        '<sourceurl>': 'https://eaw-ckan-dev1.eawag.wroot.emp-eaw.ch/dataset/bottom-up-identification-of-subsystems-in-swiss-water-governance'
-        }
-
-z = Zen(args)
-
-r = z.putmeta()
+    z.putfiles()
+    
