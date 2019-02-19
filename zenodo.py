@@ -53,16 +53,15 @@ class Zen:
     def putfiles(self, resourcefiles=None, zid=None):
         resourcefiles = resourcefiles or self.resourcefiles
         zid = zid or self.zid
-        url = '{}/api/deposit/depositions/{}/files'.format(self.host_zenodo, zid)
         params = {'access_token': self.apitoken_zenodo}
         for fn, _, fpath in resourcefiles:
-            print("Uploading {}, Path: {}".format(fn, fpath))
+            url = '{}/{}'.format(self.bucket_url, fn)
+            print("Uploading {}, Path: {} to {}".format(fn, fpath, url))
             with  open(fpath, 'rb') as f:
-                r = requests.post(url,
-                                  files={'file': (fn, f)},
-                                  params=params)            
+                r = requests.put(url,
+                                 data=f,
+                                 params=params)            
             print('\n{}'.format(r.text))
-        
         
     def putmeta(self):
         url = '{}/api/deposit/depositions'.format(self.host_zenodo)
@@ -81,6 +80,7 @@ class Zen:
             raise(RuntimeError('Failed to create metadata record'))
         else:
             self.zid = r.json()['id']
+            self.bucket_url = r.json()['links']['bucket']
             return r
 
     def list_depositions(self):
@@ -163,11 +163,9 @@ class Zen:
             })
         return meta
 
-    
         
 if __name__ == '__main__':
     args = docopt(__doc__, argv=sys.argv[1:])
     z = Zen(args)
     r = z.putmeta()
     z.putfiles()
-    
