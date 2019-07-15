@@ -2,16 +2,23 @@
 '''zenodo.
 
 Usage:
-  zenodo [-s] <doi> <sourceurl>
+  zenodo [-s] [--affils=<affilmap>] <doi> <sourceurl>
   zenodo (-h | --help)
 
 Options:
-   -h --help      Show this screen
-   -s --sandbox   Use Zenodo's sandbox version for testing
+   -h --help           Show this screen
+   -s --sandbox        Use Zenodo's sandbox version for testing
+  --affils=<affilmap>  Read affiliations of authors from <affilamp>.
+                       Else, affiliation is "Eawag".
 
 Arguments:
   <doi>         The Eawag DOI as "<prefix>/<suffix>"
   <sourceurl>   The URL of the CKAN package.
+  <affilmap>    JSON file that map author to affiliation:
+                {
+                   "Lastname, Firstname": "affiliation",
+                   ....
+                }
 
 '''
 import os
@@ -150,7 +157,7 @@ class Zen:
         authors = [re.sub('(<.*>)', '', a).strip() for a in authors]
         creators =  [{
             'name': n,
-            'affiliation': DEFAULT_AFFILIATION} for n in authors]
+            'affiliation': self.get_affil(n)} for n in authors]
         return creators
     
     def zenodo_meta(self):
@@ -162,6 +169,25 @@ class Zen:
             'keywords': [t.get('display_name') for t in self.ckanpkg.get('tags')]
             })
         return meta
+
+    def get_affil(self, author):
+        if not args['--affils']:
+            return DEFAULT_AFFILIATION
+        else:
+            try:
+                affilmap = open(args['--affils'], 'r')
+            except:
+                print("\nCan't open affiliation-map '{}'\n"
+                      .format(args['--affils']))
+                raise
+            affils = json.load(affilmap)
+            affils = {k.strip(): v for k ,v in affils.items()}
+            try:
+                affil = affils[author]
+            except KeyError:
+                print('\nCan\'t find affiliation for author: {}'.format(author))
+                raise
+            return affil
 
         
 if __name__ == '__main__':
